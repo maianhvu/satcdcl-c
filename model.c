@@ -143,3 +143,31 @@ void model_transfer(Model dest, Model src)
     memcpy(dest->values, src->values, sizeof(int) * size);
     memcpy(dest->decision_levels, src->decision_levels, sizeof(int) * size);
 }
+
+//-----------------------------------------------
+// CDCL
+//-----------------------------------------------
+void model_print_decisions(Model model) {
+    int level, variable_idx;
+    for (level = 0; 1; ++level) {
+        int count = 0;
+        for (variable_idx = 0; variable_idx < model->size; ++variable_idx) {
+            if (model->decision_levels[variable_idx] != level) {
+                continue;
+            }
+            if (count == 0) {
+                printf("Level %d: ", level);
+            } else if (count > 0) {
+                printf(" ");
+            }
+            printf("x%d=%c", variable_idx + 1, model_value_to_char(model->values[variable_idx]));
+            ++count;
+        }
+        printf("\n");
+        // No more variables
+        if (count == 0) {
+            break;
+        }
+    }
+}
+

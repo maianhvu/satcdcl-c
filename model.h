@@ -10,6 +10,8 @@ static int const MODEL_U = 1;
 typedef struct Model {
     int *values;
     int size;
+
+    // CDCL augmentations
     int *decision_levels;
 } *Model;
 
@@ -24,7 +26,10 @@ Model model_clone(Model);
 void model_transfer(Model dest, Model src);
 
 void model_assign(Model, int variable, int value);
+
+// CDCL methods
 void model_decision(Model, int variable, int value, int decision_level);
+void model_print_decisions(Model);
 
 #endif
 

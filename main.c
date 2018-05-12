@@ -45,7 +45,7 @@ int main(int argc, char *argv[])
     if (sat)
     {
         printf("SAT\n");
-        model_print_compact(model);
+        model_print_decisions(model);
     }
     else
     {
