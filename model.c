@@ -3,18 +3,25 @@
 #include <string.h>
 #include "model.h"
 
+AssignProps ASSIGN_PROPS_DEFAULT = {
+    .decision_level = -1,
+    .is_branching_var = 0,
+    .antecedent_idx = -1
+};
+
 Model model_create(int size)
 {
     int i;
     Model model = (Model)malloc(sizeof(struct Model));
     model->values = (int *)malloc(sizeof(int) * size);
-    model->decision_levels = (int *)malloc(sizeof(int) * size);
+    model->assign_props = (AssignProps *)malloc(sizeof(AssignProps) * size);
     for (i = 0; i < size; ++i)
     {
         model->values[i] = MODEL_U;
-        model->decision_levels[i] = -1;
+        model->assign_props[i] = ASSIGN_PROPS_DEFAULT;
     }
     model->size = size;
+    model->assigned_count = 0;
 
     return model;
 }
@@ -72,6 +79,7 @@ void model_print_compact(Model m)
 void model_free(Model model)
 {
     free(model->values);
+    free(model->assign_props);
     free(model);
 }
 
@@ -89,14 +97,33 @@ int model_value(Model model, int variable_or_literal)
 
 void model_assign(Model model, int variable, int value)
 {
-    model_decision(model, variable, value, 0);
+    AssignProps assign_props;
+    assign_props.decision_level = 0;
+    assign_props.is_branching_var = 0;
+    assign_props.antecedent_idx = -1;
+    model_decision(model, variable, value, assign_props);
 }
 
-void model_decision(Model model, int variable, int value, int decision_level)
+void model_decision(Model model, int variable, int value, AssignProps assign_props)
 {
     int variable_idx = abs(variable) - 1;
+
+    if (value == MODEL_U) {
+        printf("[ERROR] Cannot assign 'unassigned', use model_backtrack() instead");
+        return;
+    }
+
+    // Check if already assigned
+    if (model->values[variable_idx] != MODEL_U) {
+        // Skip if already assigned
+        return;
+    }
+
+    // Increment assigned count
+    model->assigned_count = model->assigned_count + 1;
+
     model->values[variable_idx] = value;
-    model->decision_levels[variable_idx] = decision_level;
+    model->assign_props[variable_idx] = assign_props;
 }
 
 // Clause evaluation
@@ -129,9 +156,9 @@ Model model_clone(Model source)
     // Copy values
     clone->values = (int *)malloc(sizeof(int) * source->size);
     memcpy(clone->values, source->values, sizeof(int) * source->size);
-    // Copy decision levels
-    clone->decision_levels = (int *)malloc(sizeof(int) * source->size);
-    memcpy(clone->decision_levels, source->decision_levels, sizeof(int) * source->size);
+    // Copy assign properties
+    clone->assign_props = (AssignProps *)malloc(sizeof(AssignProps) * source->size);
+    memcpy(clone->assign_props, source->assign_props, sizeof(AssignProps) * source->size);
     // Retain size
     clone->size = source->size;
     return clone;
@@ -141,7 +168,9 @@ void model_transfer(Model dest, Model src)
 {
     int size = dest->size < src->size ? dest->size : src->size;
     memcpy(dest->values, src->values, sizeof(int) * size);
-    memcpy(dest->decision_levels, src->decision_levels, sizeof(int) * size);
+    memcpy(dest->assign_props,
+            src->assign_props,
+            sizeof(AssignProps) * size);
 }
 
 //-----------------------------------------------
@@ -152,7 +181,7 @@ void model_print_decisions(Model model) {
     for (level = 0; 1; ++level) {
         int count = 0;
         for (variable_idx = 0; variable_idx < model->size; ++variable_idx) {
-            if (model->decision_levels[variable_idx] != level) {
+            if (model->assign_props[variable_idx].decision_level != level) {
                 continue;
             }
             if (count == 0) {
@@ -171,3 +200,15 @@ void model_print_decisions(Model model) {
     }
 }
 
+void model_backtrack(Model m, int decision_level) {
+    int variable_idx;
+    for (variable_idx = 0; variable_idx < m->size; ++variable_idx) {
+        // Skip variables with decision level smaller than the supplied number
+        if (m->assign_props[variable_idx].decision_level < decision_level) {
+            continue;
+        }
+        m->values[variable_idx] = MODEL_U;
+        m->assign_props[variable_idx] = ASSIGN_PROPS_DEFAULT;
+        m->assigned_count = m->assigned_count - 1;
+    }
+}

@@ -8,6 +8,10 @@ typedef struct Formula {
 
     // Private properties
     int buffer_size;
+
+    // CDCL Augmentations
+    int *learned_clauses_indexes;
+    int num_clauses_learned;
 } *Formula;
 
 Formula formula_read(int size);

@@ -6,208 +6,187 @@
 void find_pure_symbol(
     Formula f, Model m,
     int *clause_eval_result,
-    int *p, int *value);
+    int *variable, int *value);
 void find_unit_clause(
     Formula f, Model m,
     int *clause_eval_result,
-    int *p, int *value);
-int cdcl_solve_internal(Formula formula, Model model, int decision_level);
+    int *variable, int *value);
+
+int unit_propagation(
+        Formula, Model,
+        int decision_level,
+        int *conflicted_clause_idx);
+
+void pick_branching_variable(
+    Formula, Model,
+    int *variable, int *value);
+int conflict_analysis(Formula, Model);
 
 // Solving
 int cdcl_solve(Formula formula, Model model) {
-    return cdcl_solve_internal(formula, model, 0);
-}
+    // First unit propagation check
+    // We don't care what the conflicted clause is, as long as there
+    // is a conflict we will return UNSAT.
+    if (!unit_propagation(formula, model, 0, NULL)) {
+        return 0;
+    }
+    int decision_level = 0;
 
-int cdcl_solve_internal(Formula formula, Model model, int decision_level)
-{
-    int clause_idx;
-    int formula_eval_min = MODEL_1;
-    int *clause_eval_result = (int *)malloc(sizeof(int) * formula->size);
-    // Evaluate all clauses
-    for (clause_idx = 0; clause_idx < formula->size; ++clause_idx)
-    {
-        int eval = model_eval(model, formula, clause_idx);
-        if (formula_eval_min > eval)
-        {
-            formula_eval_min = eval;
-        }
-        // "if some clause in clauses is false in model then return false"
-        if (formula_eval_min == MODEL_0)
-        {
+    int i;
+    int num_conflicts = 0;
+    double alpha = 0.4;
+
+    // CHB: TODO: Find out what this is
+    int last_conflict_map[model->size];
+    for (i = 0; i < model->size; ++i) { last_conflict_map[i] = 0; }
+    // CHB: TODO: Find out what this is
+    double q_map[model->size];
+    for (i = 0; i < model->size; ++i) { q_map[i] = 0; }
+
+    while (model->assigned_count < model->size) {
+        int p = -1;
+        int value;
+        pick_branching_variable(formula, model, &p, &value);
+        if (p == -1) {
+            printf("[ERROR] A variable must have been picked");
             return 0;
         }
-        clause_eval_result[clause_idx] = eval;
-    }
-    // "if every clause in clauses is true in model then return true"
-    if (formula_eval_min == MODEL_1)
-    {
-        return 1;
-    }
-    // Find pure symbol
-    int p = -1;
-    int value;
-    find_pure_symbol(formula, model, clause_eval_result, &p, &value);
-    if (p > -1)
-    {
-        // Found a pure symbol
-        model_decision(model, p, value, decision_level);
-        free(clause_eval_result);
-        return cdcl_solve(formula, model);
+
+        ++decision_level;
+        AssignProps props = {
+            .decision_level = decision_level,
+            .is_branching_var = 1,
+            .antecedent_idx = -1
+        };
+        model_decision(model, p, value, props);
+
+        // Check for conflict
+        int conflicted_clause_idx = -1;
+        int conflicted = !unit_propagation(
+                formula, model,
+                decision_level,
+                &conflicted_clause_idx);
+
+        // CHB: Update multiplier
+        double chb_multiplier = conflicted ? 1 : 0;
+        // Update all assigned variables
+        for (i = 0; i < model->size; ++i) {
+            // Skip unassigned variables, we only want assigned
+            if (model->values[i] == MODEL_U) {
+                continue;
+            }
+            double reward = chb_multiplier / (num_conflicts - last_conflict_map[i] + 1);
+            q_map[i] = (1 - alpha) * q_map[i] + alpha * reward;
+        }
+
+        // CDCL: Backtrack or exit
+        if (conflicted) {
+            // Increment conflict count
+            ++num_conflicts;
+
+            // CHB: Update alpha
+            if (alpha > 0.06) {
+                alpha -= 1e-6;
+            }
+
+            // CDCL: Conflict analysis
+            int beta = conflict_analysis(formula, model);
+            // UNSAT
+            if (beta < 0) {
+                return 0;
+            } else {
+                // Backtrack
+                model_backtrack(model, beta);
+                decision_level = beta;
+            }
+        }
+
     }
 
-    // Find unit clause
-    find_unit_clause(formula, model, clause_eval_result, &p, &value);
-    if (p > -1)
-    {
-        // Found a unit clause
-        model_decision(model, p, value, decision_level);
-        free(clause_eval_result);
-        return cdcl_solve(formula, model);
+    return 1;
+}
+
+/**
+ * Check if the clause at index `clause_idx` within formula `formula` is a unit
+ * clause. If it is, returns the index of the unit literal within the formula's
+ * buffer, else return -1.
+ * @param f The formula
+ * @param m The model to check assignments against
+ * @param clause_idx The index of the clause
+ * @returns literal index of the unit literal within the formula's buffer,
+ *  or -1 if the clause is not unit
+ */
+int check_unit_clause(Formula f, Model m, int clause_idx) {
+    int literal_idx;
+    int unit_literal_idx = -1;
+
+    for (literal_idx = (clause_idx == 0 ? 0 : f->indexes[literal_idx - 1]);
+         literal_idx < f->indexes[clause_idx];
+         ++literal_idx) {
+        // Skip assigned literals
+        if (model_value(m, f->buffer[literal_idx]) != MODEL_U) {
+            continue;
+        }
+        // If there is already another unit literal before this one,
+        // then we have at least two unassigned literals and thus
+        // this clause is not a unit clause
+        if (unit_literal_idx > -1) {
+            return -1;
+        }
+        unit_literal_idx = literal_idx;
     }
 
-    // We don't need it anymore
-    free(clause_eval_result);
+    return unit_literal_idx;
+}
 
-    // Else find the first unassigned symbol and assign it to
-    // two different values
-    int variable_idx;
-    for (variable_idx = 0; variable_idx < model->size; ++variable_idx)
-    {
-        if (model->values[variable_idx] == MODEL_U)
-        {
+int unit_propagation(
+        Formula f, Model m,
+        int decision_level,
+        int *conflicted_clause_idx) {
+    int clause_idx;
+    int found_unit_clause = 1;
+    while (found_unit_clause) {
+        found_unit_clause = 0;
+
+        for (clause_idx = 0; clause_idx < f->size; ++clause_idx) {
+            int eval = model_eval(m, f, clause_idx);
+            // One clause is unsatisfied -> conflict
+            if (eval == MODEL_0) {
+                *conflicted_clause_idx = clause_idx;
+                return 0;
+            }
+            int unit_literal_idx;
+            // If clause is not unit then move on to the next
+            if ((unit_literal_idx = check_unit_clause(f, m, clause_idx)) == -1) {
+                continue;
+            }
+            // Clause is now unit, set value
+            int variable = f->buffer[unit_literal_idx];
+            int value = f->buffer[unit_literal_idx] > 0 ? MODEL_1 : MODEL_0;
+            AssignProps props = {
+                .decision_level = decision_level,
+                .is_branching_var = 0,
+                .antecedent_idx = clause_idx
+            };
+            model_decision(m, variable, value, props);
+            found_unit_clause = 1;
+            // Check again
             break;
         }
     }
-    // Cannot find an unassigned variable
-    if (model->values[variable_idx] != MODEL_U)
-    {
-        return 0;
-    }
-
-    int new_decision_level = decision_level + 1;
-    // Try first assignment;
-    Model clone = model_clone(model);
-    model_decision(clone, variable_idx + 1, MODEL_1, new_decision_level);
-    if (cdcl_solve_internal(formula, clone, new_decision_level))
-    {
-        model_transfer(model, clone);
-        model_free(clone);
-        return 1;
-    }
-
-    // Try second assignment
-
-    // Remove old clone
-    model_free(clone);
-    // Create a new clone
-    clone = model_clone(model);
-    // Assign the negative assignment
-    model_decision(clone, variable_idx + 1, MODEL_0, new_decision_level);
-    if (cdcl_solve_internal(formula, clone, new_decision_level))
-    {
-        model_transfer(model, clone);
-        model_free(clone);
-        return 1;
-    }
-    model_free(clone);
-    return 0;
+    return 1;
 }
 
-void find_pure_symbol(
+void pick_branching_variable(
     Formula f, Model m,
-    int *clause_eval_result,
-    int *p, int *value)
-{
-    int clause_idx, literal_idx;
-    int literal_signs[m->size];
-    int variable_idx;
-    // Initialize all signs for variables to non-present (0)
-    for (variable_idx = 0; variable_idx < m->size; ++variable_idx)
-    {
-        literal_signs[variable_idx] = 0;
-    }
-
-    for (clause_idx = 0; clause_idx < f->size; ++clause_idx)
-    {
-        // Skip non-unassigned clauses
-        if (clause_eval_result[clause_idx] != MODEL_U)
-        {
-            continue;
-        }
-        // Traverse the clause and find all unassigned literals
-        for (literal_idx = (clause_idx == 0 ? 0 : f->indexes[clause_idx - 1]);
-             literal_idx < f->indexes[clause_idx];
-             ++literal_idx)
-        {
-            // Skip assigned literals
-            int value = model_value(m, f->buffer[literal_idx]);
-            if (value != MODEL_U)
-            {
-                continue;
-            }
-            // Literal is now unassigned, update its signs
-            // Positive sign maps to 0b01, negative sign maps to 0b10
-            int variable = abs(f->buffer[literal_idx]) - 1;
-            literal_signs[variable] |= (f->buffer[literal_idx] > 0 ? (1 << 0) : (1 << 1));
-        }
-    }
-
-    // Find the first variable that has only one sign
-    for (variable_idx = 0; variable_idx < m->size; ++variable_idx)
-    {
-        // If it has only one sign
-        if ((literal_signs[variable_idx] & 1) ^ ((literal_signs[variable_idx] >> 1) & 1))
-        {
-            *p = (variable_idx + 1);
-            *value = (literal_signs[variable_idx] & 1) ? MODEL_1 : MODEL_0;
-            return;
-        }
-    }
+    int *p, int *value) {
+    // TODO: Change this
+    *p = 0;
+    *value = 1;
 }
 
-void find_unit_clause(
-    Formula f, Model m,
-    int *clause_eval_result,
-    int *p, int *value)
-{
-    int clause_idx, literal_idx;
-
-    for (clause_idx = 0; clause_idx < f->size; ++clause_idx)
-    {
-        // Skip non-unassigned clauses
-        if (clause_eval_result[clause_idx] != MODEL_U)
-        {
-            continue;
-        }
-        // Traverse the clause and find the first unassigned literal
-        int unassigned_count = 0;
-        int unassigned_literal_idx = -1;
-
-        for (literal_idx = (clause_idx == 0 ? 0 : f->indexes[clause_idx - 1]);
-             literal_idx < f->indexes[clause_idx];
-             ++literal_idx)
-        {
-            // Skip assigned literals
-            if (model_value(m, f->buffer[literal_idx]) == MODEL_U)
-            {
-                unassigned_literal_idx = literal_idx;
-                ++unassigned_count;
-                // End early if there are more than one unassigned literals
-                if (unassigned_count > 1)
-                {
-                    break;
-                }
-            }
-        }
-
-        // Check if is NOT a unit clause
-        if (unassigned_count != 1)
-        {
-            continue;
-        }
-        // Is now confirmed to be a unit clause, extract result from the literal
-        *p = abs(f->buffer[unassigned_literal_idx]);
-        *value = (f->buffer[unassigned_literal_idx] > 0) ? MODEL_1 : MODEL_0;
-        return;
-    }
+int conflict_analysis(Formula formula, Model model) {
+    return 0; // TODO: Implement this
 }
+
+

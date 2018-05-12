@@ -51,6 +51,11 @@ Formula formula_read(int size) {
     f->indexes = indexes;
     f->size = size;
     f->buffer_size = buffer_size;
+
+    // CDCL: Learned clauses
+    f->learned_clauses_indexes = NULL;
+    f->num_clauses_learned = 0;
+
     return f;
 }
 
@@ -74,5 +79,6 @@ void formula_print(Formula f) {
 void formula_free(Formula f) {
     free(f->buffer);
     free(f->indexes);
+    free(f->learned_clauses_indexes);
     free(f);
 }
