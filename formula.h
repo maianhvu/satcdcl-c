@@ -5,6 +5,9 @@ typedef struct Formula {
     int *buffer;
     int *indexes;
     int size;
+
+    // Private properties
+    int buffer_size;
 } *Formula;
 
 Formula formula_read(int size);

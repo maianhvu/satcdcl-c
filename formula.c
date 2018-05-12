@@ -50,6 +50,7 @@ Formula formula_read(int size) {
     f->buffer = buffer;
     f->indexes = indexes;
     f->size = size;
+    f->buffer_size = buffer_size;
     return f;
 }
 
