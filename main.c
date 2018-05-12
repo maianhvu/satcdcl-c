@@ -27,10 +27,9 @@ int main(int argc, char* argv[]) {
     }
     // Initialize formula
     Formula formula = formula_read(k);
-    formula_print(formula);
+    // formula_print(formula);
 
     Model model = model_create(n);
-    model_print(model);
 
     int sat;
 #if USE_CDCL
@@ -40,7 +39,7 @@ int main(int argc, char* argv[]) {
 
     if (sat) {
         printf("SAT\n");
-        model_print(model);
+        model_print_compact(model);
     } else {
         printf("UNSAT\n");
     }

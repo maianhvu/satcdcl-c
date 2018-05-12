@@ -15,8 +15,10 @@ typedef struct Model {
 Model model_create(int size);
 char model_value_to_char(int value);
 void model_print(Model);
+void model_print_compact(Model);
 void model_free(Model);
 int model_value(Model, int variable_or_literal);
+void model_assign(Model, int variable, int value);
 int model_eval(Model, Formula, int clause_index);
 Model model_clone(Model);
 void model_transfer(Model dest, Model src);

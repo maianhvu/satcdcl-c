@@ -29,7 +29,7 @@ Formula formula_read(int size) {
 void formula_print(Formula f) {
     int i, j;
     for (i = 0; i < f->size; ++i) {
-        printf("(");
+        printf("%d. (", i);
         for (j = (i == 0 ? 0 : f->indexes[i - 1]); j < f->indexes[i]; ++j) {
             int literal = f->buffer[j];
             if (literal < 0) {
@@ -40,10 +40,7 @@ void formula_print(Formula f) {
                 printf(" + ");
             }
         }
-        printf(")");
-        if (i == f->size - 1) {
-            printf("\n");
-        }
+        printf(")\n");
     }
 }
 void formula_free(Formula f) {

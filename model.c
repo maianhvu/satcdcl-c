@@ -36,6 +36,19 @@ void model_print(Model m) {
     }
 }
 
+void model_print_compact(Model m) {
+    int i;
+    for (i = 0; i < m->size; ++i) {
+        printf("%c", model_value_to_char(m->values[i]));
+        if (i < m->size - 1) {
+            printf(" ");
+        } else {
+            printf("\n");
+        }
+    }
+}
+
+
 void model_free(Model model) {
     free(model->values);
     free(model);
@@ -49,6 +62,10 @@ int model_value(Model model, int variable_or_literal) {
         value = MODEL_1 - value;
     }
     return value;
+}
+
+void model_assign(Model model, int variable, int value) {
+    model->values[abs(variable) - 1] = value;
 }
 
 // Clause evaluation
@@ -74,13 +91,13 @@ int model_eval(Model model, Formula formula, int clause_index) {
 Model model_clone(Model source) {
     Model clone = (Model) malloc(sizeof(struct Model));
     clone->values = (int *) malloc(sizeof(int) * source->size);
-    memcpy(clone->values, source->values, source->size);
+    memcpy(clone->values, source->values, sizeof(int) * source->size);
     clone->size = source->size;
     return clone;
 }
 
 void model_transfer(Model dest, Model src) {
     int size = dest->size < src->size ? dest->size : src->size;
-    memcpy(src->values, dest->values, size);
+    memcpy(dest->values, src->values, sizeof(int) * size);
 }
 

@@ -33,7 +33,6 @@ int dpll_solve(Formula formula, Model model) {
     }
     // "if every clause in clauses is true in model then return true"
     if (formula_eval_min == MODEL_1) {
-        printf("All are true\n");
         return 1;
     }
     // Find pure symbol
@@ -42,8 +41,7 @@ int dpll_solve(Formula formula, Model model) {
     find_pure_symbol(formula, model, clause_eval_result, &p, &value);
     if (p > -1) {
         // Found a pure symbol
-        printf("[DEBUG] pure x%d\tassign %c\n", p, model_value_to_char(value));
-        model->values[p] = value;
+        model_assign(model, p, value);
         free(clause_eval_result);
         return dpll_solve(formula, model);
     }
@@ -52,8 +50,7 @@ int dpll_solve(Formula formula, Model model) {
     find_unit_clause(formula, model, clause_eval_result, &p, &value);
     if (p > -1) {
         // Found a unit clause
-        printf("[DEBUG] unit x%d\tassign %c\n", p, model_value_to_char(value));
-        model->values[p] = value;
+        model_assign(model, p, value);
         free(clause_eval_result);
         return dpll_solve(formula, model);
     }
@@ -71,18 +68,21 @@ int dpll_solve(Formula formula, Model model) {
     }
     // Cannot find an unassigned variable
     if (model->values[variable_idx] != MODEL_U) {
-        printf("Cannot find an unassigned variable");
         return 0;
     }
     // Try first assignment;
     Model clone = model_clone(model);
-    clone->values[variable_idx] = MODEL_1;
+    model_assign(clone, variable_idx + 1,MODEL_1);
     if (dpll_solve(formula, clone)) {
         model_transfer(model, clone);
         model_free(clone);
         return 1;
     }
-    clone->values[variable_idx] = MODEL_0;
+
+    // Try second assignment
+    model_free(clone);
+    clone = model_clone(model);
+    model_assign(clone, variable_idx + 1,MODEL_0);
     if (dpll_solve(formula, clone)) {
         model_transfer(model, clone);
         model_free(clone);
@@ -129,8 +129,8 @@ void find_pure_symbol(
     // Find the first variable that has only one sign
     for (variable_idx = 0; variable_idx < m->size; ++variable_idx) {
         // If it has only one sign
-        if ((literal_signs[variable_idx] & 1) ^ (literal_signs[variable_idx] & (1 << 1))) {
-            *p = variable_idx;
+        if ((literal_signs[variable_idx] & 1) ^ ((literal_signs[variable_idx] >> 1) & 1)) {
+            *p = (variable_idx + 1);
             *value = (literal_signs[variable_idx] & 1) ? MODEL_1 : MODEL_0;
             return;
         }
@@ -165,15 +165,16 @@ void find_unit_clause(
                     break;
                 }
             }
-            // Check if is NOT a unit clause
-            if (unassigned_count > 1) {
-                continue;
-            }
-            // Is now confirmed to be a unit clause, extract result from the literal
-            *p = abs(f->buffer[unassigned_literal_idx]);
-            *value = (f->buffer[unassigned_literal_idx] > 0) ? MODEL_1 : MODEL_0;
-            return;
         }
+
+        // Check if is NOT a unit clause
+        if (unassigned_count != 1) {
+            continue;
+        }
+        // Is now confirmed to be a unit clause, extract result from the literal
+        *p = abs(f->buffer[unassigned_literal_idx]);
+        *value = (f->buffer[unassigned_literal_idx] > 0) ? MODEL_1 : MODEL_0;
+        return;
     }
 }
 
