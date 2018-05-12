@@ -1,19 +1,19 @@
-#include "dpll_solve.h"
+#include "cdcl_solve.h"
 #include <stdio.h>
 #include <stdlib.h>
 
 // Private interface
-void dpll_find_pure_symbol(
+void find_pure_symbol(
     Formula f, Model m,
     int *clause_eval_result,
     int *p, int *value);
-void dpll_find_unit_clause(
+void find_unit_clause(
     Formula f, Model m,
     int *clause_eval_result,
     int *p, int *value);
 
 // Solving
-int dpll_solve(Formula formula, Model model)
+int cdcl_solve(Formula formula, Model model)
 {
     int clause_idx;
     int formula_eval_min = MODEL_1;
@@ -41,23 +41,23 @@ int dpll_solve(Formula formula, Model model)
     // Find pure symbol
     int p = -1;
     int value;
-    dpll_find_pure_symbol(formula, model, clause_eval_result, &p, &value);
+    find_pure_symbol(formula, model, clause_eval_result, &p, &value);
     if (p > -1)
     {
         // Found a pure symbol
         model_assign(model, p, value);
         free(clause_eval_result);
-        return dpll_solve(formula, model);
+        return cdcl_solve(formula, model);
     }
 
     // Find unit clause
-    dpll_find_unit_clause(formula, model, clause_eval_result, &p, &value);
+    find_unit_clause(formula, model, clause_eval_result, &p, &value);
     if (p > -1)
     {
         // Found a unit clause
         model_assign(model, p, value);
         free(clause_eval_result);
-        return dpll_solve(formula, model);
+        return cdcl_solve(formula, model);
     }
 
     // We don't need it anymore
@@ -81,7 +81,7 @@ int dpll_solve(Formula formula, Model model)
     // Try first assignment;
     Model clone = model_clone(model);
     model_assign(clone, variable_idx + 1, MODEL_1);
-    if (dpll_solve(formula, clone))
+    if (cdcl_solve(formula, clone))
     {
         model_transfer(model, clone);
         model_free(clone);
@@ -92,7 +92,7 @@ int dpll_solve(Formula formula, Model model)
     model_free(clone);
     clone = model_clone(model);
     model_assign(clone, variable_idx + 1, MODEL_0);
-    if (dpll_solve(formula, clone))
+    if (cdcl_solve(formula, clone))
     {
         model_transfer(model, clone);
         model_free(clone);
@@ -102,7 +102,7 @@ int dpll_solve(Formula formula, Model model)
     return 0;
 }
 
-void dpll_find_pure_symbol(
+void find_pure_symbol(
     Formula f, Model m,
     int *clause_eval_result,
     int *p, int *value)
@@ -154,7 +154,7 @@ void dpll_find_pure_symbol(
     }
 }
 
-void dpll_find_unit_clause(
+void find_unit_clause(
     Formula f, Model m,
     int *clause_eval_result,
     int *p, int *value)
