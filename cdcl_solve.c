@@ -20,7 +20,9 @@ int unit_propagation(
 void pick_branching_variable(
     Formula, Model,
     int *variable, int *value);
-int conflict_analysis(Formula, Model);
+
+int conflict_analysis(Formula, Model, int decision_level);
+int xi(Formula, Model, int clause_idx, int literal, int decision_level);
 
 // Solving
 int cdcl_solve(Formula formula, Model model) {
@@ -90,7 +92,7 @@ int cdcl_solve(Formula formula, Model model) {
             }
 
             // CDCL: Conflict analysis
-            int beta = conflict_analysis(formula, model);
+            int beta = conflict_analysis(formula, model, decision_level);
             // UNSAT
             if (beta < 0) {
                 return 0;
@@ -185,7 +187,42 @@ void pick_branching_variable(
     *value = 1;
 }
 
-int conflict_analysis(Formula formula, Model model) {
+//-----------------------------------------------
+// Clause Learning
+//-----------------------------------------------
+// xi(omega, l, d) = { 1 if (l in omega) and (delta(l) = d) and (alpha(l) != NIL)
+//                   { 0 otherwise
+// - omega: a clause
+// - l: a literal (integer)
+// - d: decision level (integer)
+// - delta(l) == d returns 1 if decision level of l is d
+// - alpha(l) is the antecedent of l
+int xi(Formula f, Model m, int clause_idx, int literal, int decision_level) {
+    // Check if literal is in clause
+    int literal_idx;
+    for (literal_idx = (clause_idx == 0 ? 0 : f->indexes[clause_idx - 1]):
+         literal_idx < f->indexes[clause_idx];
+         ++literal_idx) {
+        if (f->buffer[literal_idx] == literal) {
+            break;
+        }
+    }
+    if (f->buffer[literal_idx] != literal) {
+        return 0;
+    }
+
+    AssignProps props = model->assign_props[abs(literal) - 1];
+    // Check decision level
+    if (props.decision_level != decision_level) {
+        return 0;
+    }
+    // Check antecedent, must be present
+    return props.antecedent_idx > -1;
+}
+
+int conflict_analysis(Formula formula, Model model, int decision_level) {
+    int beta = 0; // TODO: Find conflict level
+
     return 0; // TODO: Implement this
 }
 

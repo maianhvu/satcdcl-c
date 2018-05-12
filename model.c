@@ -212,3 +212,4 @@ void model_backtrack(Model m, int decision_level) {
         m->assigned_count = m->assigned_count - 1;
     }
 }
+
