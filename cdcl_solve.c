@@ -11,9 +11,14 @@ void find_unit_clause(
     Formula f, Model m,
     int *clause_eval_result,
     int *p, int *value);
+int cdcl_solve_internal(Formula formula, Model model, int decision_level);
 
 // Solving
-int cdcl_solve(Formula formula, Model model)
+int cdcl_solve(Formula formula, Model model) {
+    return cdcl_solve_internal(formula, model, 0);
+}
+
+int cdcl_solve_internal(Formula formula, Model model, int decision_level)
 {
     int clause_idx;
     int formula_eval_min = MODEL_1;
@@ -45,7 +50,7 @@ int cdcl_solve(Formula formula, Model model)
     if (p > -1)
     {
         // Found a pure symbol
-        model_assign(model, p, value);
+        model_decision(model, p, value, decision_level);
         free(clause_eval_result);
         return cdcl_solve(formula, model);
     }
@@ -55,7 +60,7 @@ int cdcl_solve(Formula formula, Model model)
     if (p > -1)
     {
         // Found a unit clause
-        model_assign(model, p, value);
+        model_decision(model, p, value, decision_level);
         free(clause_eval_result);
         return cdcl_solve(formula, model);
     }
@@ -78,10 +83,12 @@ int cdcl_solve(Formula formula, Model model)
     {
         return 0;
     }
+
+    int new_decision_level = decision_level + 1;
     // Try first assignment;
     Model clone = model_clone(model);
-    model_assign(clone, variable_idx + 1, MODEL_1);
-    if (cdcl_solve(formula, clone))
+    model_decision(clone, variable_idx + 1, MODEL_1, new_decision_level);
+    if (cdcl_solve_internal(formula, clone, new_decision_level))
     {
         model_transfer(model, clone);
         model_free(clone);
@@ -89,10 +96,14 @@ int cdcl_solve(Formula formula, Model model)
     }
 
     // Try second assignment
+
+    // Remove old clone
     model_free(clone);
+    // Create a new clone
     clone = model_clone(model);
-    model_assign(clone, variable_idx + 1, MODEL_0);
-    if (cdcl_solve(formula, clone))
+    // Assign the negative assignment
+    model_decision(clone, variable_idx + 1, MODEL_0, new_decision_level);
+    if (cdcl_solve_internal(formula, clone, new_decision_level))
     {
         model_transfer(model, clone);
         model_free(clone);
